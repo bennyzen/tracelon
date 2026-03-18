@@ -36,16 +36,6 @@ fn build_vtracer_config(color_mode: vtracer::ColorMode, mode_hint: &TraceMode) -
     }
 }
 
-fn image_to_color_image(img: &DynamicImage, rect: &Rect) -> vtracer::ColorImage {
-    let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
-    let rgba = cropped.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    vtracer::ColorImage {
-        pixels: rgba.into_raw(),
-        width: w as usize,
-        height: h as usize,
-    }
-}
 
 fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String), String> {
     use imageproc::contrast::{otsu_level, threshold, ThresholdType};
@@ -73,27 +63,49 @@ fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, Str
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
+/// Pre-quantize an RGBA image to exactly `n_colors` using median-cut, then
+/// replace every pixel with its nearest palette color. This guarantees vtracer
+/// sees at most N distinct colors.
+fn quantize_image(rgba: &mut image::RgbaImage, n_colors: u8) {
+    use color_quant::NeuQuant;
+
+    // NeuQuant needs &[u8] of RGBA pixels
+    let pixels: Vec<u8> = rgba.pixels().flat_map(|p| p.0).collect();
+    // sample_factor: 1 = best quality (sample every pixel), 10 = fast
+    let nq = NeuQuant::new(10, n_colors.max(2) as usize, &pixels);
+
+    for pixel in rgba.pixels_mut() {
+        let idx = nq.index_of(&pixel.0);
+        let mapped = nq.lookup(idx).unwrap_or([0, 0, 0, 255]);
+        pixel.0 = [mapped[0], mapped[1], mapped[2], pixel.0[3]];
+    }
+    eprintln!("[trace] quantized to {} colors", n_colors);
+}
+
 fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<String>, String), String> {
-    let color_img = image_to_color_image(img, rect);
-    let w = color_img.width;
-    let h = color_img.height;
-    // color_precision: higher = more color detail (1-8, where 8-val = bits lost)
-    // layer_difference: higher = fewer layers/colors
-    // For fewer colors (2-4), use large layer_difference to merge similar colors
-    // For more colors (8+), use small layer_difference to keep detail
-    let (precision, layer_diff) = match colors {
-        2..=3 => (6, 64),
-        4..=6 => (6, 32),
-        7..=10 => (8, 16),
-        _ => (8, 8),
+    let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
+    let mut rgba = cropped.to_rgba8();
+    let (w, h) = rgba.dimensions();
+
+    // Pre-quantize to exact color count so vtracer can't introduce extra colors
+    quantize_image(&mut rgba, colors);
+
+    let color_img = vtracer::ColorImage {
+        pixels: rgba.into_raw(),
+        width: w as usize,
+        height: h as usize,
     };
+
     let mut config = build_vtracer_config(vtracer::ColorMode::Color, &TraceMode::MultiColor { colors });
     config.hierarchical = vtracer::Hierarchical::Stacked;
-    config.color_precision = precision;
-    config.layer_difference = layer_diff;
+    // After quantization the image has exactly N colors, so use high precision
+    // and low layer_difference to preserve them faithfully
+    config.color_precision = 8;
+    config.layer_difference = 4;
+
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
-    eprintln!("[trace] multicolor: {} paths, precision={}, layer_diff={}", paths.len(), precision, layer_diff);
+    eprintln!("[trace] multicolor: {} paths, {} colors requested", paths.len(), colors);
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
