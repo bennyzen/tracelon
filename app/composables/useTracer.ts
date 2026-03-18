@@ -33,6 +33,15 @@ export type TraceMode =
   | { type: 'MultiColor'; colors: number }
   | { type: 'Outline' }
 
+// Wait for Vue to flush DOM updates AND the browser to paint a frame
+function waitForPaint(): Promise<void> {
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
 export function useTracer() {
   const imageInfo = ref<ImageInfo | null>(null)
   const svgData = ref<SvgData | null>(null)
@@ -57,8 +66,7 @@ export function useTracer() {
   async function trace(selection: Rect, mode: TraceMode, smoothness: number) {
     loading.value = true
     error.value = null
-    // Let Vue render the loading state before blocking on IPC
-    await new Promise(r => setTimeout(r, 50))
+    await waitForPaint()
     try {
       svgData.value = await invoke<SvgData>('trace', { selection, mode, smoothness })
     }
@@ -73,7 +81,7 @@ export function useTracer() {
   async function simplify(params: PipelineParams) {
     loading.value = true
     error.value = null
-    await new Promise(r => setTimeout(r, 50))
+    await waitForPaint()
     try {
       svgData.value = await invoke<SvgData>('simplify', { params })
     }
