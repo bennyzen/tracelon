@@ -1,8 +1,8 @@
 # Tracelon
 
-A desktop app for tracing AI-generated logos to clean SVG with optimized curves.
+A desktop app for tracing raster images to clean SVG with optimized curves.
 
-Load a raster image, select an area, trace it to SVG, and interactively tune curve smoothness with live preview. The key feature is post-trace curve simplification that eliminates the jaggedness typical of bitmap-to-vector conversion.
+Load an image, select an area, trace it to SVG, and interactively tune curve smoothness with live preview. The key feature is post-trace curve simplification that eliminates the jaggedness typical of bitmap-to-vector conversion.
 
 ## Features
 
