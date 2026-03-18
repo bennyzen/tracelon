@@ -25,9 +25,7 @@ source=()
 build() {
   cd "$startdir"
   pnpm install --frozen-lockfile
-  pnpm generate
-  cd src-tauri
-  cargo build --release
+  pnpm tauri build --bundles deb
 }
 
 package() {
