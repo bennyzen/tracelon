@@ -32,10 +32,12 @@ function formatSize(bytes: number): string {
       </span>
     </div>
     <div class="flex-1 relative overflow-hidden bg-zinc-950 flex items-center justify-center">
-      <div v-if="loading" class="text-zinc-500">
-        <UButton loading variant="ghost" label="Tracing..." />
+      <!-- Loading overlay — shown on top of any existing content -->
+      <div v-if="loading" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
+        <div class="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <span class="text-sm text-violet-400">Tracing...</span>
       </div>
-      <div v-else-if="svgData" class="relative flex items-center justify-center" style="width: 100%; height: 100%;">
+      <div v-if="svgData" class="relative flex items-center justify-center" style="width: 100%; height: 100%;">
         <div class="relative" style="max-width: 90%; max-height: 90%;">
           <img
             v-if="showOverlay && thumbnailBase64"
