@@ -28,6 +28,9 @@ pub fn run() {
         .manage(Mutex::new(AppState::default()))
         .invoke_handler(tauri::generate_handler![
             commands::load::load_image,
+            commands::trace::trace,
+            commands::simplify::simplify,
+            commands::export::export_svg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
