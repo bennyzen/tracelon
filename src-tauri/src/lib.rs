@@ -1,6 +1,7 @@
 // src-tauri/src/lib.rs
 mod types;
 mod commands;
+mod pipeline;
 
 use std::sync::Mutex;
 use image::DynamicImage;
