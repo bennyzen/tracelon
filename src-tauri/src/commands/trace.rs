@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use image::{DynamicImage, ImageBuffer, Luma};
+use image::DynamicImage;
 use visioncortex::PathSimplifyMode;
 use crate::types::{Rect, TraceMode, SvgData};
 use crate::AppState;
@@ -39,46 +39,39 @@ fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<
     let color_img = image_to_color_image(img, rect);
     let w = color_img.width;
     let h = color_img.height;
+    // color_precision: higher = more color detail (1-8, where 8-val = bits lost)
+    // layer_difference: higher = fewer layers/colors
+    // For fewer colors (2-4), use large layer_difference to merge similar colors
+    // For more colors (8+), use small layer_difference to keep detail
+    let (precision, layer_diff) = match colors {
+        2..=3 => (6, 64),
+        4..=6 => (6, 32),
+        7..=10 => (8, 16),
+        _ => (8, 8),
+    };
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Color,
+        hierarchical: vtracer::Hierarchical::Stacked,
         mode: PathSimplifyMode::Spline,
         filter_speckle: 4,
+        color_precision: precision,
+        layer_difference: layer_diff,
         corner_threshold: 60,
         length_threshold: 4.0,
         splice_threshold: 45,
-        color_precision: match colors {
-            2..=4 => 2,
-            5..=8 => 4,
-            9..=12 => 6,
-            _ => 8,
-        },
         ..vtracer::Config::default()
     };
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
-    eprintln!("[trace] multicolor: {} paths", paths.len());
+    eprintln!("[trace] multicolor: {} paths, precision={}, layer_diff={}", paths.len(), precision, layer_diff);
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
 fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String), String> {
-    use imageproc::gradients::sobel_gradients;
-
-    let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
-    let gray = cropped.to_luma8();
-    let edges = sobel_gradients(&gray);
-
-    let binary: image::GrayImage = ImageBuffer::from_fn(edges.width(), edges.height(), |x, y| {
-        if edges.get_pixel(x, y).0[0] > 2000 { Luma([0u8]) } else { Luma([255u8]) }
-    });
-
-    let w = binary.width() as usize;
-    let h = binary.height() as usize;
-    let rgba = DynamicImage::ImageLuma8(binary).to_rgba8();
-    let color_img = vtracer::ColorImage {
-        pixels: rgba.into_raw(),
-        width: w,
-        height: h,
-    };
+    // Trace as monochrome filled shapes, then convert to stroke-only outlines
+    let color_img = image_to_color_image(img, rect);
+    let w = color_img.width;
+    let h = color_img.height;
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Binary,
         mode: PathSimplifyMode::Spline,
@@ -89,7 +82,21 @@ fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String
         ..vtracer::Config::default()
     };
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
-    let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
+
+    // Convert filled paths to stroked outlines:
+    // Replace fill="..." with fill="none" stroke="black" stroke-width="1"
+    let paths: Vec<String> = svg_file.paths.iter().map(|p| {
+        let s = format!("{p}");
+        // Remove existing fill, add stroke
+        let s = if let Some(start) = s.find("fill=\"") {
+            let end = s[start + 6..].find('"').map(|e| start + 6 + e + 1).unwrap_or(s.len());
+            format!("{}fill=\"none\" stroke=\"black\" stroke-width=\"1\"{}", &s[..start], &s[end..])
+        } else {
+            // No fill attribute, just add stroke
+            s.replace("/>", " fill=\"none\" stroke=\"black\" stroke-width=\"1\"/>")
+        };
+        s
+    }).collect();
     eprintln!("[trace] outline: {} paths", paths.len());
     Ok((paths, format!("0 0 {w} {h}")))
 }
