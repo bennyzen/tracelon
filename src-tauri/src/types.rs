@@ -30,6 +30,7 @@ pub struct ImageInfo {
 pub struct SvgData {
     pub paths: String,
     pub path_count: usize,
+    pub segment_count: usize,
     pub viewbox: String,
     pub estimated_size: usize,
 }

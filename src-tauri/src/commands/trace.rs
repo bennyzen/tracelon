@@ -4,6 +4,7 @@ use visioncortex::PathSimplifyMode;
 use crate::types::{Rect, TraceMode, SvgData};
 use crate::AppState;
 use crate::pipeline::simplify::simplify_svg_path;
+use crate::pipeline::segment_count::count_segments;
 
 fn image_to_color_image(img: &DynamicImage, rect: &Rect) -> vtracer::ColorImage {
     let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
@@ -152,7 +153,10 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) ->
         let all_paths = paths.join("\n");
         let estimated_size = all_paths.len();
         let path_count = paths.len();
-        return Ok(SvgData { paths: all_paths, path_count, viewbox: viewbox.to_string(), estimated_size });
+        let segment_count: usize = paths.iter().map(|p| {
+            extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
+        }).sum();
+        return Ok(SvgData { paths: all_paths, path_count, segment_count, viewbox: viewbox.to_string(), estimated_size });
     }
 
     // At smoothness > 0, use kurbo's simplify_bezpath for further curve reduction
@@ -176,8 +180,11 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) ->
     let all_paths = simplified_paths.join("\n");
     let estimated_size = all_paths.len();
     let path_count = simplified_paths.len();
+    let segment_count: usize = simplified_paths.iter().map(|p| {
+        extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
+    }).sum();
 
-    Ok(SvgData { paths: all_paths, path_count, viewbox: viewbox.to_string(), estimated_size })
+    Ok(SvgData { paths: all_paths, path_count, segment_count, viewbox: viewbox.to_string(), estimated_size })
 }
 
 fn extract_d_attribute(svg_path_element: &str) -> Option<String> {

@@ -9,6 +9,7 @@ export interface ImageInfo {
 export interface SvgData {
   paths: string
   pathCount: number
+  segmentCount: number
   viewbox: string
   estimatedSize: number
 }

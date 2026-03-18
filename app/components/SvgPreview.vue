@@ -28,7 +28,7 @@ function formatSize(bytes: number): string {
     <div class="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wider flex justify-between">
       <span class="text-zinc-500">SVG Preview</span>
       <span v-if="svgData" class="text-emerald-500">
-        {{ svgData.pathCount }} paths &bull; {{ formatSize(svgData.estimatedSize) }}
+        {{ svgData.pathCount }} paths &bull; {{ svgData.segmentCount }} segments &bull; {{ formatSize(svgData.estimatedSize) }}
       </span>
     </div>
     <div class="flex-1 relative overflow-hidden bg-zinc-950 flex items-center justify-center">
