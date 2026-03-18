@@ -171,23 +171,20 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelinePa
         extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
     }).sum();
 
-    // At smoothness 0, return vtracer's Spline output as-is (already smooth)
-    if params.smoothness < 0.01 {
-        let all_paths = paths.join("\n");
-        let estimated_size = all_paths.len();
-        let path_count = paths.len();
-        return Ok(SvgData { paths: all_paths, path_count, segment_count: raw_segment_count, raw_segment_count, viewbox: viewbox.to_string(), estimated_size });
-    }
-
     let flatness = params.line_snap;
+    let do_simplify = params.smoothness >= 0.01;
 
     let mut simplified_paths = Vec::new();
     for path_str in paths {
         if let Some(d) = extract_d_attribute(path_str) {
-            // Stage 1: Simplify the whole path with kurbo (preserves path continuity)
-            let simplified = simplify_svg_path(&d, params.smoothness).unwrap_or_else(|_| d.clone());
+            // Stage 1: Simplify the whole path with kurbo (skip at smoothness 0)
+            let simplified = if do_simplify {
+                simplify_svg_path(&d, params.smoothness).unwrap_or_else(|_| d.clone())
+            } else {
+                d.clone()
+            };
 
-            // Stage 2: Snap near-flat cubics to lines
+            // Stage 2: Snap near-flat cubics/runs to lines (always runs)
             let snapped = snap_lines(&simplified, flatness).unwrap_or(simplified);
 
             let new_path = path_str.replace(&d, &snapped);
@@ -227,14 +224,16 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_simplification_passthrough_at_zero() {
+    fn test_apply_simplification_at_zero_still_snaps_lines() {
+        // At smoothness 0, kurbo simplification is skipped but line snap still runs
         let paths = vec![
             r#"<path d="M0,0 C33,0 66,0 100,0 C100,33 100,66 100,100" fill="black"/>"#.to_string(),
         ];
         let result = apply_simplification(&paths, "0 0 100 100", &params(0.0)).unwrap();
         assert_eq!(result.path_count, 1);
         assert!(result.segment_count > 0);
-        assert!(result.paths.contains("C33"));
+        // Flat cubics should be snapped to lines even at smoothness 0
+        assert!(result.paths.contains('L'), "Flat cubics should become lines: {}", result.paths);
     }
 
     #[test]
