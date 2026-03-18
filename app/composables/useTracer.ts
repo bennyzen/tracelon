@@ -10,6 +10,7 @@ export interface SvgData {
   paths: string
   pathCount: number
   segmentCount: number
+  rawSegmentCount: number
   viewbox: string
   estimatedSize: number
 }
@@ -19,6 +20,12 @@ export interface Rect {
   y: number
   width: number
   height: number
+}
+
+export interface PipelineParams {
+  smoothness: number
+  lineSnap: number
+  cornerAngle: number
 }
 
 export type TraceMode =
@@ -63,12 +70,12 @@ export function useTracer() {
     }
   }
 
-  async function simplify(smoothness: number) {
+  async function simplify(params: PipelineParams) {
     loading.value = true
     error.value = null
     await new Promise(r => setTimeout(r, 50))
     try {
-      svgData.value = await invoke<SvgData>('simplify', { smoothness })
+      svgData.value = await invoke<SvgData>('simplify', { params })
     }
     catch (e) {
       error.value = String(e)

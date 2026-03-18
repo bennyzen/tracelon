@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use image::DynamicImage;
 use visioncortex::PathSimplifyMode;
-use crate::types::{Rect, TraceMode, SvgData};
+use crate::types::{Rect, TraceMode, SvgData, PipelineParams};
 use crate::AppState;
 use crate::pipeline::simplify::simplify_svg_path;
 use crate::pipeline::segment_count::count_segments;
@@ -151,25 +151,25 @@ pub fn trace_inner(state: &Mutex<AppState>, selection: Rect, mode: TraceMode, sm
     app.cached_trace_viewbox = Some(viewbox.clone());
     drop(app);
 
-    apply_simplification(&paths, &viewbox, smoothness)
+    apply_simplification(&paths, &viewbox, &PipelineParams::from_smoothness(smoothness))
 }
 
-pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) -> Result<SvgData, String> {
+pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelineParams) -> Result<SvgData, String> {
+    // Count raw segments before any processing
+    let raw_segment_count: usize = paths.iter().map(|p| {
+        extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
+    }).sum();
+
     // At smoothness 0, return vtracer's Spline output as-is (already smooth)
-    if smoothness < 0.01 {
+    if params.smoothness < 0.01 {
         let all_paths = paths.join("\n");
         let estimated_size = all_paths.len();
         let path_count = paths.len();
-        let segment_count: usize = paths.iter().map(|p| {
-            extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
-        }).sum();
-        return Ok(SvgData { paths: all_paths, path_count, segment_count, viewbox: viewbox.to_string(), estimated_size });
+        return Ok(SvgData { paths: all_paths, path_count, segment_count: raw_segment_count, raw_segment_count, viewbox: viewbox.to_string(), estimated_size });
     }
 
-    // Map smoothness (0.0-1.0) to pipeline parameters
-    let accuracy = 0.5 + smoothness * 7.5;   // kurbo accuracy: 0.5-8.0 px
-    let flatness = 0.5 + smoothness * 2.0;   // line snap tolerance: 0.5-2.5 px
-    let corner_angle = 120.0 + smoothness * 30.0; // corner threshold: 120-150°
+    let flatness = params.line_snap;
+    let corner_angle = params.corner_angle;
 
     let mut simplified_paths = Vec::new();
     for path_str in paths {
@@ -179,7 +179,7 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) ->
 
             // Stage 2: Simplify each sub-path independently with kurbo
             let simplified_subs: Vec<String> = sub_paths.iter().map(|sub| {
-                simplify_svg_path(sub, smoothness).unwrap_or_else(|_| sub.clone())
+                simplify_svg_path(sub, params.smoothness).unwrap_or_else(|_| sub.clone())
             }).collect();
 
             // Stage 3: Rejoin sub-paths
@@ -202,7 +202,7 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) ->
         extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
     }).sum();
 
-    Ok(SvgData { paths: all_paths, path_count, segment_count, viewbox: viewbox.to_string(), estimated_size })
+    Ok(SvgData { paths: all_paths, path_count, segment_count, raw_segment_count, viewbox: viewbox.to_string(), estimated_size })
 }
 
 fn extract_d_attribute(svg_path_element: &str) -> Option<String> {
@@ -220,12 +220,16 @@ pub fn trace(state: tauri::State<'_, Mutex<AppState>>, selection: Rect, mode: Tr
 mod tests {
     use super::*;
 
+    fn params(smoothness: f64) -> PipelineParams {
+        PipelineParams::from_smoothness(smoothness)
+    }
+
     #[test]
     fn test_apply_simplification_passthrough_at_zero() {
         let paths = vec![
             r#"<path d="M0,0 C33,0 66,0 100,0 C100,33 100,66 100,100" fill="black"/>"#.to_string(),
         ];
-        let result = apply_simplification(&paths, "0 0 100 100", 0.0).unwrap();
+        let result = apply_simplification(&paths, "0 0 100 100", &params(0.0)).unwrap();
         assert_eq!(result.path_count, 1);
         assert!(result.segment_count > 0);
         assert!(result.paths.contains("C33"));
@@ -233,7 +237,6 @@ mod tests {
 
     #[test]
     fn test_apply_simplification_reduces_segments() {
-        // A path with many small wobbly cubic segments
         let mut d = "M0,0".to_string();
         for i in 1..=20 {
             let x = i as f64 * 5.0;
@@ -242,8 +245,8 @@ mod tests {
         }
         let paths = vec![format!(r#"<path d="{d}" fill="black"/>"#)];
 
-        let result_raw = apply_simplification(&paths, "0 0 100 100", 0.0).unwrap();
-        let result_smooth = apply_simplification(&paths, "0 0 100 100", 0.5).unwrap();
+        let result_raw = apply_simplification(&paths, "0 0 100 100", &params(0.0)).unwrap();
+        let result_smooth = apply_simplification(&paths, "0 0 100 100", &params(0.5)).unwrap();
 
         assert!(
             result_smooth.segment_count <= result_raw.segment_count,
@@ -257,8 +260,7 @@ mod tests {
         let paths = vec![
             r#"<path d="M0,0 C33,0 66,0 100,0" fill="black"/>"#.to_string(),
         ];
-        let result = apply_simplification(&paths, "0 0 100 100", 0.5).unwrap();
-        // The flat cubic should have been snapped to a line
+        let result = apply_simplification(&paths, "0 0 100 100", &params(0.5)).unwrap();
         assert!(
             result.paths.contains('L') || !result.paths.contains("C33"),
             "Flat cubic should be snapped to line: {}", result.paths
@@ -281,7 +283,7 @@ mod tests {
         let paths = vec![
             r#"<path d="M0,0 L100,0 L100,100 L0,100 Z" fill="black"/>"#.to_string(),
         ];
-        let result = apply_simplification(&paths, "0 0 100 100", 0.0).unwrap();
+        let result = apply_simplification(&paths, "0 0 100 100", &params(0.0)).unwrap();
         assert!(result.segment_count >= 3, "Should count line segments: {}", result.segment_count);
     }
 }

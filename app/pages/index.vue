@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import type { Rect, TraceMode } from '~/composables/useTracer'
+import type { Rect, TraceMode, PipelineParams } from '~/composables/useTracer'
 
 const { imageInfo, svgData, loading, error, loadImage, trace, simplify, exportSvg } = useTracer()
 const toast = useToast()
@@ -41,9 +41,9 @@ async function handleTrace() {
   }
 }
 
-async function handleSmoothnessChange(value: number) {
+async function handlePipelineChange(params: PipelineParams) {
   if (!hasTraced.value) return
-  await simplify(value / 100)
+  await simplify(params)
   if (error.value) {
     toast.add({ title: 'Simplify failed', description: error.value, color: 'error' })
   }
@@ -96,7 +96,7 @@ onMounted(async () => {
       @open="handleOpen"
       @trace="handleTrace"
       @export="handleExport"
-      @smoothness-change="handleSmoothnessChange"
+      @pipeline-change="handlePipelineChange"
     />
     <div class="flex-1 flex min-h-0">
       <SourceCanvas

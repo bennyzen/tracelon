@@ -25,12 +25,31 @@ pub struct ImageInfo {
     pub thumbnail_base64: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineParams {
+    pub smoothness: f64,
+    pub line_snap: f64,
+    pub corner_angle: f64,
+}
+
+impl PipelineParams {
+    pub fn from_smoothness(s: f64) -> Self {
+        Self {
+            smoothness: s,
+            line_snap: 0.5 + s * 2.0,       // 0.5-2.5 px
+            corner_angle: 120.0 + s * 30.0,  // 120-150°
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SvgData {
     pub paths: String,
     pub path_count: usize,
     pub segment_count: usize,
+    pub raw_segment_count: usize,
     pub viewbox: String,
     pub estimated_size: usize,
 }
