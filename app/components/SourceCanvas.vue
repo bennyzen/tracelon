@@ -17,7 +17,10 @@ const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 
 watch(() => props.thumbnailBase64, async (b64) => {
-  if (!b64 || !canvasRef.value) return
+  if (!b64) return
+  // Wait for Vue to mount the canvas element (v-if just became true)
+  await nextTick()
+  if (!canvasRef.value) return
   const image = new Image()
   image.onload = () => {
     img.value = image

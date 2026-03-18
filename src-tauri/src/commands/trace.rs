@@ -1,6 +1,6 @@
-// src-tauri/src/commands/trace.rs
 use std::sync::Mutex;
 use image::{DynamicImage, ImageBuffer, Luma};
+use visioncortex::PathSimplifyMode;
 use crate::types::{Rect, TraceMode, SvgData};
 use crate::AppState;
 use crate::pipeline::simplify::simplify_svg_path;
@@ -22,10 +22,16 @@ fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, Str
     let h = color_img.height;
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Binary,
+        mode: PathSimplifyMode::Spline,
+        filter_speckle: 4,
+        corner_threshold: 60,
+        length_threshold: 4.0,
+        splice_threshold: 45,
         ..vtracer::Config::default()
     };
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
+    eprintln!("[trace] monochrome: {} paths", paths.len());
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
@@ -35,6 +41,11 @@ fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<
     let h = color_img.height;
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Color,
+        mode: PathSimplifyMode::Spline,
+        filter_speckle: 4,
+        corner_threshold: 60,
+        length_threshold: 4.0,
+        splice_threshold: 45,
         color_precision: match colors {
             2..=4 => 2,
             5..=8 => 4,
@@ -45,6 +56,7 @@ fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<
     };
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
+    eprintln!("[trace] multicolor: {} paths", paths.len());
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
@@ -53,7 +65,7 @@ fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String
 
     let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
     let gray = cropped.to_luma8();
-    let edges = sobel_gradients(&gray); // returns ImageBuffer<Luma<u16>, Vec<u16>>
+    let edges = sobel_gradients(&gray);
 
     let binary: image::GrayImage = ImageBuffer::from_fn(edges.width(), edges.height(), |x, y| {
         if edges.get_pixel(x, y).0[0] > 2000 { Luma([0u8]) } else { Luma([255u8]) }
@@ -69,14 +81,21 @@ fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String
     };
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Binary,
+        mode: PathSimplifyMode::Spline,
+        filter_speckle: 4,
+        corner_threshold: 60,
+        length_threshold: 4.0,
+        splice_threshold: 45,
         ..vtracer::Config::default()
     };
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
+    eprintln!("[trace] outline: {} paths", paths.len());
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
 pub fn trace_inner(state: &Mutex<AppState>, selection: Rect, mode: TraceMode, smoothness: f64) -> Result<SvgData, String> {
+    eprintln!("[trace] Starting: mode={:?} smoothness={}", mode, smoothness);
     let mut app = state.lock().map_err(|e| format!("Lock error: {e}"))?;
     let img = app.loaded_image.as_ref().ok_or("No image loaded")?;
 
@@ -94,12 +113,27 @@ pub fn trace_inner(state: &Mutex<AppState>, selection: Rect, mode: TraceMode, sm
 }
 
 pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) -> Result<SvgData, String> {
+    // At smoothness 0, return vtracer's Spline output as-is (already smooth)
+    if smoothness < 0.01 {
+        let all_paths = paths.join("\n");
+        let estimated_size = all_paths.len();
+        let path_count = paths.len();
+        return Ok(SvgData { paths: all_paths, path_count, viewbox: viewbox.to_string(), estimated_size });
+    }
+
+    // At smoothness > 0, use kurbo's simplify_bezpath for further curve reduction
     let mut simplified_paths = Vec::new();
     for path_str in paths {
         if let Some(d) = extract_d_attribute(path_str) {
-            let simplified = simplify_svg_path(&d, smoothness)?;
-            let new_path = path_str.replace(&d, &simplified);
-            simplified_paths.push(new_path);
+            match simplify_svg_path(&d, smoothness) {
+                Ok(simplified) => {
+                    let new_path = path_str.replace(&d, &simplified);
+                    simplified_paths.push(new_path);
+                }
+                Err(_) => {
+                    simplified_paths.push(path_str.clone());
+                }
+            }
         } else {
             simplified_paths.push(path_str.clone());
         }

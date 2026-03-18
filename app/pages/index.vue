@@ -8,7 +8,7 @@ const toast = useToast()
 
 const selection = ref<Rect | null>(null)
 const mode = ref<TraceMode>({ type: 'Monochrome' })
-const smoothness = ref(50)
+const smoothness = ref(0)
 const hasTraced = ref(false)
 const filename = ref<string | null>(null)
 

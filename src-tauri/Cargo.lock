@@ -5155,6 +5155,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-shell",
  "tempfile",
+ "visioncortex",
  "vtracer",
 ]
 

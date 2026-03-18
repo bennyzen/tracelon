@@ -9,6 +9,13 @@ export default defineNuxtConfig({
     clearScreen: false,
     envPrefix: ['VITE_', 'TAURI_'],
     server: { strictPort: true },
+    optimizeDeps: {
+      include: [
+        '@tauri-apps/plugin-dialog',
+        '@tauri-apps/api/window',
+        '@tauri-apps/api/core',
+      ],
+    },
   },
   ignore: ['**/src-tauri/**'],
 })

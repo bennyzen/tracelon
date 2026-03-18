@@ -9,6 +9,14 @@ const props = defineProps<{
 
 const showOverlay = ref(true)
 
+const svgHtml = computed(() => {
+  if (!props.svgData) return ''
+  const vb = props.svgData.viewbox.split(' ')
+  const w = vb[2] || '800'
+  const h = vb[3] || '600'
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${props.svgData.viewbox}" width="${w}" height="${h}" style="max-width:100%;height:auto;display:block;">${props.svgData.paths}</svg>`
+})
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   return `${(bytes / 1024).toFixed(1)} KB`
@@ -27,16 +35,19 @@ function formatSize(bytes: number): string {
       <div v-if="loading" class="text-zinc-500">
         <UButton loading variant="ghost" label="Tracing..." />
       </div>
-      <div v-else-if="svgData" class="relative max-w-full max-h-full">
-        <img
-          v-if="showOverlay && thumbnailBase64"
-          :src="`data:image/jpeg;base64,${thumbnailBase64}`"
-          class="absolute inset-0 w-full h-full object-contain opacity-20 pointer-events-none"
-        />
-        <div
-          class="relative bg-white rounded"
-          v-html="`<svg xmlns='http://www.w3.org/2000/svg' viewBox='${svgData.viewbox}' style='max-width:100%;max-height:70vh;'>${svgData.paths}</svg>`"
-        />
+      <div v-else-if="svgData" class="relative flex items-center justify-center" style="width: 100%; height: 100%;">
+        <div class="relative" style="max-width: 90%; max-height: 90%;">
+          <img
+            v-if="showOverlay && thumbnailBase64"
+            :src="`data:image/jpeg;base64,${thumbnailBase64}`"
+            class="absolute inset-0 w-full h-full object-contain opacity-20 pointer-events-none"
+          />
+          <div
+            class="relative rounded"
+            style="background: repeating-conic-gradient(#e5e5e5 0% 25%, #fff 0% 50%) 0 0 / 16px 16px;"
+            v-html="svgHtml"
+          />
+        </div>
       </div>
       <div v-else class="text-zinc-600">
         Trace an image to see the preview
