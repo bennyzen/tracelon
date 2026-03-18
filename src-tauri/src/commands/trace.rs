@@ -5,6 +5,37 @@ use crate::types::{Rect, TraceMode, SvgData};
 use crate::AppState;
 use crate::pipeline::simplify::simplify_svg_path;
 use crate::pipeline::segment_count::count_segments;
+use crate::pipeline::line_snap::snap_lines;
+use crate::pipeline::corner_split::{split_at_corners, rejoin_paths};
+
+fn build_vtracer_config(color_mode: vtracer::ColorMode, mode_hint: &TraceMode) -> vtracer::Config {
+    match mode_hint {
+        TraceMode::Monochrome | TraceMode::Outline => {
+            // Line art / logos: tighter corners, finer detail
+            vtracer::Config {
+                color_mode,
+                mode: PathSimplifyMode::Spline,
+                filter_speckle: 4,
+                corner_threshold: 45,
+                length_threshold: 3.0,
+                splice_threshold: 40,
+                ..vtracer::Config::default()
+            }
+        }
+        TraceMode::MultiColor { .. } => {
+            // Color images: more forgiving, filter more noise
+            vtracer::Config {
+                color_mode,
+                mode: PathSimplifyMode::Spline,
+                filter_speckle: 8,
+                corner_threshold: 60,
+                length_threshold: 4.0,
+                splice_threshold: 45,
+                ..vtracer::Config::default()
+            }
+        }
+    }
+}
 
 fn image_to_color_image(img: &DynamicImage, rect: &Rect) -> vtracer::ColorImage {
     let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
@@ -36,15 +67,7 @@ fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, Str
         width: w,
         height: h,
     };
-    let config = vtracer::Config {
-        color_mode: vtracer::ColorMode::Binary,
-        mode: PathSimplifyMode::Spline,
-        filter_speckle: 4,
-        corner_threshold: 60,
-        length_threshold: 4.0,
-        splice_threshold: 45,
-        ..vtracer::Config::default()
-    };
+    let config = build_vtracer_config(vtracer::ColorMode::Binary, &TraceMode::Monochrome);
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
     eprintln!("[trace] monochrome: {} paths", paths.len());
@@ -65,18 +88,10 @@ fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<
         7..=10 => (8, 16),
         _ => (8, 8),
     };
-    let config = vtracer::Config {
-        color_mode: vtracer::ColorMode::Color,
-        hierarchical: vtracer::Hierarchical::Stacked,
-        mode: PathSimplifyMode::Spline,
-        filter_speckle: 4,
-        color_precision: precision,
-        layer_difference: layer_diff,
-        corner_threshold: 60,
-        length_threshold: 4.0,
-        splice_threshold: 45,
-        ..vtracer::Config::default()
-    };
+    let mut config = build_vtracer_config(vtracer::ColorMode::Color, &TraceMode::MultiColor { colors });
+    config.hierarchical = vtracer::Hierarchical::Stacked;
+    config.color_precision = precision;
+    config.layer_difference = layer_diff;
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
     let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
     eprintln!("[trace] multicolor: {} paths, precision={}, layer_diff={}", paths.len(), precision, layer_diff);
@@ -100,15 +115,7 @@ fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String
         width: w,
         height: h,
     };
-    let config = vtracer::Config {
-        color_mode: vtracer::ColorMode::Binary,
-        mode: PathSimplifyMode::Spline,
-        filter_speckle: 4,
-        corner_threshold: 60,
-        length_threshold: 4.0,
-        splice_threshold: 45,
-        ..vtracer::Config::default()
-    };
+    let config = build_vtracer_config(vtracer::ColorMode::Binary, &TraceMode::Outline);
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
 
     // Convert filled paths to stroked outlines:
@@ -159,19 +166,30 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, smoothness: f64) ->
         return Ok(SvgData { paths: all_paths, path_count, segment_count, viewbox: viewbox.to_string(), estimated_size });
     }
 
-    // At smoothness > 0, use kurbo's simplify_bezpath for further curve reduction
+    // Map smoothness (0.0-1.0) to pipeline parameters
+    let accuracy = 0.5 + smoothness * 7.5;   // kurbo accuracy: 0.5-8.0 px
+    let flatness = 0.5 + smoothness * 2.0;   // line snap tolerance: 0.5-2.5 px
+    let corner_angle = 120.0 + smoothness * 30.0; // corner threshold: 120-150°
+
     let mut simplified_paths = Vec::new();
     for path_str in paths {
         if let Some(d) = extract_d_attribute(path_str) {
-            match simplify_svg_path(&d, smoothness) {
-                Ok(simplified) => {
-                    let new_path = path_str.replace(&d, &simplified);
-                    simplified_paths.push(new_path);
-                }
-                Err(_) => {
-                    simplified_paths.push(path_str.clone());
-                }
-            }
+            // Stage 1: Split at sharp corners
+            let sub_paths = split_at_corners(&d, corner_angle).unwrap_or_else(|_| vec![d.clone()]);
+
+            // Stage 2: Simplify each sub-path independently with kurbo
+            let simplified_subs: Vec<String> = sub_paths.iter().map(|sub| {
+                simplify_svg_path(sub, smoothness).unwrap_or_else(|_| sub.clone())
+            }).collect();
+
+            // Stage 3: Rejoin sub-paths
+            let rejoined = rejoin_paths(&simplified_subs);
+
+            // Stage 4: Snap near-flat cubics to lines
+            let snapped = snap_lines(&rejoined, flatness).unwrap_or(rejoined);
+
+            let new_path = path_str.replace(&d, &snapped);
+            simplified_paths.push(new_path);
         } else {
             simplified_paths.push(path_str.clone());
         }
@@ -196,4 +214,74 @@ fn extract_d_attribute(svg_path_element: &str) -> Option<String> {
 #[tauri::command]
 pub fn trace(state: tauri::State<'_, Mutex<AppState>>, selection: Rect, mode: TraceMode, smoothness: f64) -> Result<SvgData, String> {
     trace_inner(&state, selection, mode, smoothness)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_apply_simplification_passthrough_at_zero() {
+        let paths = vec![
+            r#"<path d="M0,0 C33,0 66,0 100,0 C100,33 100,66 100,100" fill="black"/>"#.to_string(),
+        ];
+        let result = apply_simplification(&paths, "0 0 100 100", 0.0).unwrap();
+        assert_eq!(result.path_count, 1);
+        assert!(result.segment_count > 0);
+        assert!(result.paths.contains("C33"));
+    }
+
+    #[test]
+    fn test_apply_simplification_reduces_segments() {
+        // A path with many small wobbly cubic segments
+        let mut d = "M0,0".to_string();
+        for i in 1..=20 {
+            let x = i as f64 * 5.0;
+            let wobble = if i % 2 == 0 { 0.3 } else { -0.3 };
+            d.push_str(&format!(" C{},{} {},{} {},{}", x - 3.0, wobble, x - 1.5, -wobble, x, 0.0));
+        }
+        let paths = vec![format!(r#"<path d="{d}" fill="black"/>"#)];
+
+        let result_raw = apply_simplification(&paths, "0 0 100 100", 0.0).unwrap();
+        let result_smooth = apply_simplification(&paths, "0 0 100 100", 0.5).unwrap();
+
+        assert!(
+            result_smooth.segment_count <= result_raw.segment_count,
+            "Smoothing should reduce segments: raw={} smooth={}",
+            result_raw.segment_count, result_smooth.segment_count
+        );
+    }
+
+    #[test]
+    fn test_apply_simplification_snaps_flat_cubics() {
+        let paths = vec![
+            r#"<path d="M0,0 C33,0 66,0 100,0" fill="black"/>"#.to_string(),
+        ];
+        let result = apply_simplification(&paths, "0 0 100 100", 0.5).unwrap();
+        // The flat cubic should have been snapped to a line
+        assert!(
+            result.paths.contains('L') || !result.paths.contains("C33"),
+            "Flat cubic should be snapped to line: {}", result.paths
+        );
+    }
+
+    #[test]
+    fn test_extract_d_attribute() {
+        let svg = r#"<path d="M0,0 L100,0" fill="black"/>"#;
+        assert_eq!(extract_d_attribute(svg), Some("M0,0 L100,0".to_string()));
+    }
+
+    #[test]
+    fn test_extract_d_attribute_no_d() {
+        assert_eq!(extract_d_attribute(r#"<rect width="10" />"#), None);
+    }
+
+    #[test]
+    fn test_segment_count_populated() {
+        let paths = vec![
+            r#"<path d="M0,0 L100,0 L100,100 L0,100 Z" fill="black"/>"#.to_string(),
+        ];
+        let result = apply_simplification(&paths, "0 0 100 100", 0.0).unwrap();
+        assert!(result.segment_count >= 3, "Should count line segments: {}", result.segment_count);
+    }
 }
