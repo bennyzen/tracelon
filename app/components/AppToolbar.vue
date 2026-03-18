@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import type { TraceMode } from '~/composables/useTracer'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
+async function minimizeWindow() { await getCurrentWindow().minimize() }
+async function toggleMaximize() { await getCurrentWindow().toggleMaximize() }
+async function closeWindow() { await getCurrentWindow().close() }
 
 const props = defineProps<{
   hasImage: boolean
@@ -55,7 +60,9 @@ watch(smoothness, (val) => {
 </script>
 
 <template>
-  <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900">
+  <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900" data-tauri-drag-region>
+    <span class="text-sm font-semibold text-zinc-400 select-none pointer-events-none">Tracelon</span>
+    <div class="w-px h-6 bg-zinc-700" />
     <UButton icon="i-lucide-folder-open" label="Open" variant="soft" @click="$emit('open')" />
     <div class="w-px h-6 bg-zinc-700" />
     <span class="text-xs text-zinc-500">Mode:</span>
@@ -77,5 +84,17 @@ watch(smoothness, (val) => {
     <UButton icon="i-lucide-play" label="Trace" color="primary" :disabled="!hasImage" :loading="loading" @click="$emit('trace')" />
     <div class="flex-1" />
     <UButton icon="i-lucide-download" label="Export SVG" color="success" variant="soft" :disabled="!hasSvg" @click="$emit('export')" />
+    <div class="w-px h-6 bg-zinc-700" />
+    <div class="flex gap-1">
+      <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors" @click="minimizeWindow">
+        <svg width="10" height="1" viewBox="0 0 10 1"><rect fill="currentColor" width="10" height="1"/></svg>
+      </button>
+      <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors" @click="toggleMaximize">
+        <svg width="10" height="10" viewBox="0 0 10 10"><rect fill="none" stroke="currentColor" stroke-width="1" x="0.5" y="0.5" width="9" height="9"/></svg>
+      </button>
+      <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-red-600 text-zinc-400 hover:text-white transition-colors" @click="closeWindow">
+        <svg width="10" height="10" viewBox="0 0 10 10"><line stroke="currentColor" stroke-width="1.2" x1="1" y1="1" x2="9" y2="9"/><line stroke="currentColor" stroke-width="1.2" x1="9" y1="1" x2="1" y2="9"/></svg>
+      </button>
+    </div>
   </div>
 </template>
