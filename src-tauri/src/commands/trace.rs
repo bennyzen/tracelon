@@ -17,9 +17,24 @@ fn image_to_color_image(img: &DynamicImage, rect: &Rect) -> vtracer::ColorImage 
 }
 
 fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String), String> {
-    let color_img = image_to_color_image(img, rect);
-    let w = color_img.width;
-    let h = color_img.height;
+    use imageproc::contrast::{otsu_level, threshold, ThresholdType};
+
+    // Pre-process: Otsu's threshold to get a clean black/white bitmap.
+    // This handles images where both foreground and background are dark (or both light).
+    let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
+    let gray = cropped.to_luma8();
+    let otsu = otsu_level(&gray);
+    eprintln!("[trace] Otsu threshold: {}", otsu);
+    let binary = threshold(&gray, otsu, ThresholdType::Binary);
+
+    let w = binary.width() as usize;
+    let h = binary.height() as usize;
+    let rgba = DynamicImage::ImageLuma8(binary).to_rgba8();
+    let color_img = vtracer::ColorImage {
+        pixels: rgba.into_raw(),
+        width: w,
+        height: h,
+    };
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Binary,
         mode: PathSimplifyMode::Spline,
@@ -68,10 +83,22 @@ fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<
 }
 
 fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String), String> {
-    // Trace as monochrome filled shapes, then convert to stroke-only outlines
-    let color_img = image_to_color_image(img, rect);
-    let w = color_img.width;
-    let h = color_img.height;
+    use imageproc::contrast::{otsu_level, threshold, ThresholdType};
+
+    // Same Otsu pre-processing as monochrome, then convert fills to strokes
+    let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
+    let gray = cropped.to_luma8();
+    let otsu = otsu_level(&gray);
+    let binary = threshold(&gray, otsu, ThresholdType::Binary);
+
+    let w = binary.width() as usize;
+    let h = binary.height() as usize;
+    let rgba = DynamicImage::ImageLuma8(binary).to_rgba8();
+    let color_img = vtracer::ColorImage {
+        pixels: rgba.into_raw(),
+        width: w,
+        height: h,
+    };
     let config = vtracer::Config {
         color_mode: vtracer::ColorMode::Binary,
         mode: PathSimplifyMode::Spline,
