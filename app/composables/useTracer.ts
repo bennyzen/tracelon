@@ -49,13 +49,12 @@ export function useTracer() {
   async function trace(selection: Rect, mode: TraceMode, smoothness: number) {
     loading.value = true
     error.value = null
-    console.log('[trace] Calling trace:', { selection, mode, smoothness })
+    // Let Vue render the loading state before blocking on IPC
+    await new Promise(r => setTimeout(r, 50))
     try {
       svgData.value = await invoke<SvgData>('trace', { selection, mode, smoothness })
-      console.log('[trace] Result:', svgData.value ? `${svgData.value.pathCount} paths, ${svgData.value.estimatedSize} bytes` : 'null')
     }
     catch (e) {
-      console.error('[trace] Error:', e)
       error.value = String(e)
     }
     finally {
@@ -64,12 +63,17 @@ export function useTracer() {
   }
 
   async function simplify(smoothness: number) {
+    loading.value = true
     error.value = null
+    await new Promise(r => setTimeout(r, 50))
     try {
       svgData.value = await invoke<SvgData>('simplify', { smoothness })
     }
     catch (e) {
       error.value = String(e)
+    }
+    finally {
+      loading.value = false
     }
   }
 
