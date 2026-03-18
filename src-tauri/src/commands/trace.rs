@@ -6,7 +6,6 @@ use crate::AppState;
 use crate::pipeline::simplify::simplify_svg_path;
 use crate::pipeline::segment_count::count_segments;
 use crate::pipeline::line_snap::snap_lines;
-use crate::pipeline::corner_split::{split_at_corners, rejoin_paths};
 
 fn build_vtracer_config(color_mode: vtracer::ColorMode, mode_hint: &TraceMode) -> vtracer::Config {
     match mode_hint {
@@ -169,24 +168,15 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelinePa
     }
 
     let flatness = params.line_snap;
-    let corner_angle = params.corner_angle;
 
     let mut simplified_paths = Vec::new();
     for path_str in paths {
         if let Some(d) = extract_d_attribute(path_str) {
-            // Stage 1: Split at sharp corners
-            let sub_paths = split_at_corners(&d, corner_angle).unwrap_or_else(|_| vec![d.clone()]);
+            // Stage 1: Simplify the whole path with kurbo (preserves path continuity)
+            let simplified = simplify_svg_path(&d, params.smoothness).unwrap_or_else(|_| d.clone());
 
-            // Stage 2: Simplify each sub-path independently with kurbo
-            let simplified_subs: Vec<String> = sub_paths.iter().map(|sub| {
-                simplify_svg_path(sub, params.smoothness).unwrap_or_else(|_| sub.clone())
-            }).collect();
-
-            // Stage 3: Rejoin sub-paths
-            let rejoined = rejoin_paths(&simplified_subs);
-
-            // Stage 4: Snap near-flat cubics to lines
-            let snapped = snap_lines(&rejoined, flatness).unwrap_or(rejoined);
+            // Stage 2: Snap near-flat cubics to lines
+            let snapped = snap_lines(&simplified, flatness).unwrap_or(simplified);
 
             let new_path = path_str.replace(&d, &snapped);
             simplified_paths.push(new_path);

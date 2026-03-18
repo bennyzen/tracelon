@@ -11,9 +11,10 @@ pub fn simplify_svg_path(svg_path: &str, smoothness: f64) -> Result<String, Stri
 
     let bez = BezPath::from_svg(svg_path).map_err(|e| format!("Invalid SVG path: {e}"))?;
 
-    // Map smoothness to accuracy (max error in path units/pixels):
-    // 0.01 → 0.5 px (barely noticeable), 1.0 → 8.0 px (aggressive)
-    let accuracy = 0.5 + smoothness * 7.5;
+    // Map smoothness to accuracy (max error in path units/pixels).
+    // Use quadratic curve so low values have very gentle effect:
+    // 0.01 → 0.1 px, 0.1 → 0.2 px, 0.5 → 2.1 px, 1.0 → 8.0 px
+    let accuracy = 0.1 + smoothness * smoothness * 7.9;
 
     let options = SimplifyOptions::default()
         .opt_level(SimplifyOptLevel::Optimize);

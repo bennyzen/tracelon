@@ -27,6 +27,7 @@ pub struct ImageInfo {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct PipelineParams {
     pub smoothness: f64,
     pub line_snap: f64,
