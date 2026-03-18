@@ -1,5 +1,6 @@
 // src-tauri/src/lib.rs
 mod types;
+mod commands;
 
 use std::sync::Mutex;
 use image::DynamicImage;
@@ -24,6 +25,9 @@ impl Default for AppState {
 pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(AppState::default()))
+        .invoke_handler(tauri::generate_handler![
+            commands::load::load_image,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
