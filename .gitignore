@@ -1,1 +1,12 @@
 .superpowers/
+
+# Nuxt
+.nuxt/
+.output/
+dist/
+
+# Node
+node_modules/
+
+# Rust / Tauri
+src-tauri/target/

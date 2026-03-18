@@ -1,0 +1,9 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema/acl/schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for Tracelon",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

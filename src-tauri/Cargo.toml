@@ -1,0 +1,30 @@
+[package]
+name = "tracelon"
+version = "0.1.0"
+description = "Tracelon - AI logo tracer"
+authors = []
+edition = "2021"
+
+[lib]
+name = "tracelon_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "tracelon"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = "0.25"
+imageproc = "0.26"
+vtracer = "0.6"
+svg = "0.18"
+kurbo = "0.13"
+color_quant = "1.1"
+base64 = "0.22"
