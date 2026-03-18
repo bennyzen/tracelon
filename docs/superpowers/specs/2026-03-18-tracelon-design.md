@@ -22,12 +22,13 @@ Tracelon provides a focused workflow: load image, select area, trace to SVG, and
 | Bitmap tracing | `vtracer` (pure Rust image-to-SVG tracer — no C dependency) |
 | Curve math | `kurbo` (Bezier primitives, flattening) + custom simplification algorithms (see Step 4) |
 | Color quantization | `color_quant` (for multi-color mode) |
+| Edge detection | `imageproc` (Sobel filter for outline mode) |
 | SVG output | `svg` crate |
 
 ## Processing Pipeline
 
 ```
-Load Image → Crop to Selection → Trace (potrace) → Curve Simplify → Export SVG
+Load Image → Crop to Selection → Trace (vtracer) → Curve Simplify → Export SVG
 ```
 
 ### Step 1: Load Image
@@ -65,6 +66,8 @@ The **smoothness slider** (0-100%) maps to the tolerance values in steps 2-3:
 - Low (0-20%): nearly faithful to raw trace, minimal smoothing
 - Medium (40-60%): balanced — removes jaggedness, preserves detail
 - High (80-100%): aggressive simplification, very smooth curves, may lose small details
+
+Values interpolate linearly between these reference points.
 
 Processing happens in Rust. `kurbo` provides Bezier primitives (points, vectors, `BezPath`, flattening). The simplification pipeline (Douglas-Peucker, Schneider fitting, corner detection) is custom code — this is the core algorithmic work of the project. Results are sent to the frontend as SVG path strings via Tauri IPC.
 
@@ -155,6 +158,7 @@ fn trace(selection: Rect, mode: TraceMode, smoothness: f64) -> Result<SvgData, S
 #[tauri::command]
 fn simplify(smoothness: f64) -> Result<SvgData, String>
 // Re-runs only Step 4 on cached trace data. Fast path for slider changes.
+// Returns error if no trace is cached (frontend should disable slider until first trace).
 
 #[tauri::command]
 fn export_svg(svg_data: String, output_path: String) -> Result<(), String>
