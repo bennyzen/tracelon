@@ -20,12 +20,20 @@ const containerRef = ref<HTMLElement | null>(null)
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 20
 
+// Parse viewBox dimensions once
+const svgDims = computed(() => {
+  if (!props.svgData) return { w: 800, h: 600 }
+  const vb = props.svgData.viewbox.split(' ')
+  return { w: Number(vb[2]) || 800, h: Number(vb[3]) || 600 }
+})
+
+// Bake zoom into SVG width/height so the browser renders vector paths at full resolution
 const svgHtml = computed(() => {
   if (!props.svgData) return ''
-  const vb = props.svgData.viewbox.split(' ')
-  const w = vb[2] || '800'
-  const h = vb[3] || '600'
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${props.svgData.viewbox}" width="${w}" height="${h}" style="display:block;">${props.svgData.paths}</svg>`
+  const { w, h } = svgDims.value
+  const zw = w * zoom.value
+  const zh = h * zoom.value
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${props.svgData.viewbox}" width="${zw}" height="${zh}" style="display:block;">${props.svgData.paths}</svg>`
 })
 
 // Reset zoom/pan when new SVG data arrives
@@ -125,8 +133,7 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100))
       >
         <div
           :style="{
-            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-            transformOrigin: 'center center',
+            transform: `translate(${panX}px, ${panY}px)`,
           }"
         >
           <div class="relative">
