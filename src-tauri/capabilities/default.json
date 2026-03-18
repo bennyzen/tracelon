@@ -1,9 +1,12 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema/acl/schema.json",
   "identifier": "default",
-  "description": "Default capabilities for Tracelon",
+  "description": "Default capabilities",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }
