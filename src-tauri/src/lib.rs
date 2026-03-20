@@ -3,7 +3,7 @@ mod types;
 mod commands;
 mod pipeline;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use image::DynamicImage;
 
 pub struct AppState {
@@ -26,7 +26,7 @@ impl Default for AppState {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Mutex::new(AppState::default()))
+        .manage(Arc::new(Mutex::new(AppState::default())))
         .invoke_handler(tauri::generate_handler![
             commands::load::load_image,
             commands::trace::trace,

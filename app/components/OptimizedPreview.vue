@@ -46,11 +46,7 @@ const svgHtml = computed(() => {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${zw}" height="${zh}" style="display:block;">${inner}</svg>`
 })
 
-watch(() => props.optimizedSvg, () => {
-  zoom.value = 1
-  panX.value = 0
-  panY.value = 0
-})
+// No zoom/pan reset on re-optimization — user is actively comparing
 
 function onWheel(e: WheelEvent) {
   e.preventDefault()
@@ -116,7 +112,7 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100))
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 border-l border-zinc-800">
+  <div class="flex flex-col w-full h-full border-l border-zinc-800">
     <div class="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wider flex justify-between">
       <span class="text-zinc-500">Optimized SVG</span>
       <span v-if="optimizedSvg" class="text-emerald-500">

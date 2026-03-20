@@ -47,11 +47,20 @@ async function handleTrace() {
   }
 }
 
+// Auto-retrace when mode changes (if already traced)
+watch(mode, () => {
+  if (hasTraced.value) handleTrace()
+})
+
 async function handlePipelineChange(params: PipelineParams) {
   if (!hasTraced.value) return
   await simplify(params)
   if (error.value) {
     toast.add({ title: 'Simplify failed', description: error.value, color: 'error' })
+  }
+  // Re-optimize if in export mode
+  if (exportMode.value && svgData.value) {
+    svgo.doOptimize(svgData.value.paths, svgData.value.viewbox)
   }
 }
 
@@ -152,6 +161,7 @@ onMounted(async () => {
           :thumbnail-base64="imageInfo?.thumbnailBase64 ?? null"
           :image-width="imageInfo?.width ?? 0"
           :image-height="imageInfo?.height ?? 0"
+          :loading="loading"
         />
         <SvgPreview
           class="!flex-none h-full"

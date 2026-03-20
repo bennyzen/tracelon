@@ -103,7 +103,7 @@ watch([lineSnap, cornerAngle], () => {
     <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900" data-tauri-drag-region>
       <span class="text-sm font-semibold text-zinc-400 select-none pointer-events-none">Tracelon</span>
       <div class="w-px h-6 bg-zinc-700" />
-      <UButton icon="i-lucide-folder-open" label="Open" variant="soft" @click="$emit('open')" />
+      <UButton icon="i-lucide-folder-open" label="Open" variant="outline" color="primary" size="sm" @click="$emit('open')" />
       <div class="w-px h-6 bg-zinc-700" />
       <span class="text-xs text-zinc-500">Mode:</span>
       <UTabs v-model="selectedModeValue" :items="modeItems" variant="pill" size="xs" :content="false" />
@@ -130,13 +130,37 @@ watch([lineSnap, cornerAngle], () => {
         :disabled="!hasSvg"
         @click="showTune = !showTune"
       />
-      <UButton icon="i-lucide-play" label="Trace" color="primary" :disabled="!hasImage" :loading="loading" @click="$emit('trace')" />
       <div class="flex-1" />
-      <template v-if="exportMode">
-        <UButton icon="i-lucide-arrow-left" label="Back" variant="ghost" @click="$emit('back')" />
-        <UButton icon="i-lucide-save" label="Save" color="success" @click="$emit('save')" />
-      </template>
-      <UButton v-else icon="i-lucide-download" label="Export SVG" color="success" variant="soft" :disabled="!hasSvg" @click="$emit('export')" />
+      <UFieldGroup>
+        <UButton
+          icon="i-lucide-route"
+          label="Trace"
+          size="sm"
+          :color="!exportMode ? 'primary' : 'neutral'"
+          variant="outline"
+          :disabled="!hasImage"
+          :loading="loading"
+          @click="exportMode ? $emit('back') : $emit('trace')"
+        />
+        <UButton
+          icon="i-lucide-sparkles"
+          label="Optimize"
+          size="sm"
+          :color="exportMode ? 'primary' : 'neutral'"
+          variant="outline"
+          :disabled="!hasSvg"
+          @click="$emit('export')"
+        />
+      </UFieldGroup>
+      <UButton
+        icon="i-lucide-save"
+        label="Export"
+        size="sm"
+        color="primary"
+        variant="outline"
+        :disabled="!exportMode"
+        @click="$emit('save')"
+      />
       <div class="w-px h-6 bg-zinc-700" />
       <div class="flex gap-1">
         <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors" @click="minimizeWindow">

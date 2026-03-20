@@ -33,11 +33,18 @@ export type TraceMode =
   | { type: 'MultiColor'; colors: number }
   | { type: 'Outline' }
 
-// Wait for Vue to flush DOM updates AND the browser to paint a frame
-function waitForPaint(): Promise<void> {
-  return new Promise(resolve => {
+// Force the browser to paint the loading state before invoke() blocks the JS thread.
+async function waitForPaint(): Promise<void> {
+  // Flush Vue DOM updates
+  await nextTick()
+  // Force synchronous layout recalculation
+  void document.body.offsetHeight
+  // Wait two frames + extra time for the compositor to actually render
+  await new Promise<void>(resolve => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve())
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 32)
+      })
     })
   })
 }
@@ -67,8 +74,13 @@ export function useTracer() {
     loading.value = true
     error.value = null
     await waitForPaint()
+    const minDelay = new Promise(resolve => setTimeout(resolve, 400))
     try {
-      svgData.value = await invoke<SvgData>('trace', { selection, mode, smoothness })
+      const [result] = await Promise.all([
+        invoke<SvgData>('trace', { selection, mode, smoothness }),
+        minDelay,
+      ])
+      svgData.value = result
     }
     catch (e) {
       error.value = String(e)
@@ -82,8 +94,13 @@ export function useTracer() {
     loading.value = true
     error.value = null
     await waitForPaint()
+    const minDelay = new Promise(resolve => setTimeout(resolve, 300))
     try {
-      svgData.value = await invoke<SvgData>('simplify', { params })
+      const [result] = await Promise.all([
+        invoke<SvgData>('simplify', { params }),
+        minDelay,
+      ])
+      svgData.value = result
     }
     catch (e) {
       error.value = String(e)

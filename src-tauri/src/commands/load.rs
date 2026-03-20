@@ -1,5 +1,5 @@
 // src-tauri/src/commands/load.rs
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use base64::Engine;
 use image::GenericImageView;
 use crate::types::ImageInfo;
@@ -36,7 +36,7 @@ pub fn load_image_inner(
 
 #[tauri::command]
 pub fn load_image(
-    state: tauri::State<'_, Mutex<AppState>>,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<ImageInfo, String> {
     load_image_inner(&state, path)

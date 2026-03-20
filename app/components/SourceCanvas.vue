@@ -5,6 +5,7 @@ const props = defineProps<{
   thumbnailBase64: string | null
   imageWidth: number
   imageHeight: number
+  loading: boolean
 }>()
 
 const selection = defineModel<Rect | null>('selection', { default: null })
@@ -123,20 +124,45 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 border-r border-zinc-800">
+  <div class="flex flex-col w-full h-full border-r border-zinc-800">
     <div class="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider">
       Source Image
     </div>
     <div ref="containerRef" class="flex-1 relative overflow-hidden bg-zinc-950">
-      <canvas
-        v-if="thumbnailBase64"
-        ref="canvasRef"
-        class="absolute inset-0 cursor-crosshair"
-        @mousedown="onMouseDown"
-        @mousemove="onMouseMove"
-        @mouseup="onMouseUp"
-        @mouseleave="onMouseUp"
-      />
+      <template v-if="thumbnailBase64">
+        <canvas
+          ref="canvasRef"
+          class="absolute inset-0 cursor-crosshair"
+          @mousedown="onMouseDown"
+          @mousemove="onMouseMove"
+          @mouseup="onMouseUp"
+          @mouseleave="onMouseUp"
+        />
+        <!-- Loading overlay — always in DOM, instant show, fade out -->
+        <div
+          class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950/80"
+          :class="loading ? 'opacity-100' : 'opacity-0 pointer-events-none transition-opacity duration-300'"
+        >
+          <div class="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <span class="text-sm text-purple-400">Tracing...</span>
+        </div>
+        <!-- Hint overlay -->
+        <Transition
+          enter-active-class="transition-opacity duration-200"
+          leave-active-class="transition-opacity duration-500"
+          enter-from-class="opacity-0"
+          leave-to-class="opacity-0"
+        >
+          <div
+            v-if="!selection && !isDragging && !loading"
+            class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+          >
+            <div class="bg-zinc-900/80 backdrop-blur-sm rounded-lg px-4 py-3 text-center">
+              <div class="text-sm text-zinc-300">Drag to select a region, or click Trace for full image</div>
+            </div>
+          </div>
+        </Transition>
+      </template>
       <div v-else class="flex items-center justify-center h-full text-zinc-600">
         Open an image to start
       </div>

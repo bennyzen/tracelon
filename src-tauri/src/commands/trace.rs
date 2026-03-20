@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use image::DynamicImage;
 use visioncortex::PathSimplifyMode;
 use crate::types::{Rect, TraceMode, SvgData, PipelineParams};
@@ -211,8 +211,13 @@ fn extract_d_attribute(svg_path_element: &str) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn trace(state: tauri::State<'_, Mutex<AppState>>, selection: Rect, mode: TraceMode, smoothness: f64) -> Result<SvgData, String> {
-    trace_inner(&state, selection, mode, smoothness)
+pub async fn trace(state: tauri::State<'_, Arc<Mutex<AppState>>>, selection: Rect, mode: TraceMode, smoothness: f64) -> Result<SvgData, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        trace_inner(&state, selection, mode, smoothness)
+    })
+    .await
+    .map_err(|e| format!("Task error: {e}"))?
 }
 
 #[cfg(test)]

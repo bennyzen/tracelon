@@ -100,7 +100,7 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100))
 </script>
 
 <template>
-  <div class="flex flex-col flex-1">
+  <div class="flex flex-col w-full h-full">
     <div class="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wider flex justify-between">
       <span class="text-zinc-500">SVG Preview</span>
       <span v-if="svgData" class="text-emerald-500">
@@ -124,10 +124,13 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100))
       @mouseup="onMouseUp"
       @mouseleave="onMouseUp"
     >
-      <!-- Loading overlay -->
-      <div v-if="loading" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-sm">
-        <div class="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <span class="text-sm text-violet-400">Tracing...</span>
+      <!-- Loading overlay — always in DOM, instant show, fade out -->
+      <div
+        class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950/80"
+        :class="loading ? 'opacity-100' : 'opacity-0 pointer-events-none transition-opacity duration-300'"
+      >
+        <div class="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <span class="text-sm text-purple-400">Tracing...</span>
       </div>
       <div
         v-if="svgData"
