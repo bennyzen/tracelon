@@ -14,6 +14,7 @@ export default defineNuxtConfig({
         '@tauri-apps/plugin-dialog',
         '@tauri-apps/api/window',
         '@tauri-apps/api/core',
+        'svgo',
       ],
     },
   },

@@ -36,11 +36,13 @@ const svgHtml = computed(() => {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${props.svgData.viewbox}" width="${zw}" height="${zh}" style="display:block;">${props.svgData.paths}</svg>`
 })
 
-// Reset zoom/pan when new SVG data arrives
-watch(() => props.svgData, () => {
-  zoom.value = 1
-  panX.value = 0
-  panY.value = 0
+// Reset zoom/pan only when a new image is traced (viewbox changes), not on re-simplification
+watch(() => props.svgData?.viewbox, (newVb, oldVb) => {
+  if (newVb !== oldVb) {
+    zoom.value = 1
+    panX.value = 0
+    panY.value = 0
+  }
 })
 
 function onWheel(e: WheelEvent) {

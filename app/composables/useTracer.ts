@@ -93,15 +93,25 @@ export function useTracer() {
     }
   }
 
-  async function exportSvg(outputPath: string) {
-    if (!svgData.value) return
+  async function exportSvg(outputPath: string, optimizedSvgContent?: string) {
     error.value = null
     try {
-      await invoke('export_svg', {
-        svgData: svgData.value.paths,
-        viewbox: svgData.value.viewbox,
-        outputPath,
-      })
+      if (optimizedSvgContent) {
+        // Export pre-optimized SVG directly
+        await invoke('export_optimized_svg', {
+          svgContent: optimizedSvgContent,
+          outputPath,
+        })
+      }
+      else {
+        // Legacy: export from traced paths
+        if (!svgData.value) return
+        await invoke('export_svg', {
+          svgData: svgData.value.paths,
+          viewbox: svgData.value.viewbox,
+          outputPath,
+        })
+      }
     }
     catch (e) {
       error.value = String(e)

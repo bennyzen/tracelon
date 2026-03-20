@@ -10,11 +10,14 @@ const props = defineProps<{
   hasImage: boolean
   hasSvg: boolean
   loading: boolean
+  exportMode: boolean
 }>()
 
 const emit = defineEmits<{
   open: []
   export: []
+  save: []
+  back: []
   trace: []
   pipelineChange: [params: PipelineParams]
 }>()
@@ -129,7 +132,11 @@ watch([lineSnap, cornerAngle], () => {
       />
       <UButton icon="i-lucide-play" label="Trace" color="primary" :disabled="!hasImage" :loading="loading" @click="$emit('trace')" />
       <div class="flex-1" />
-      <UButton icon="i-lucide-download" label="Export SVG" color="success" variant="soft" :disabled="!hasSvg" @click="$emit('export')" />
+      <template v-if="exportMode">
+        <UButton icon="i-lucide-arrow-left" label="Back" variant="ghost" @click="$emit('back')" />
+        <UButton icon="i-lucide-save" label="Save" color="success" @click="$emit('save')" />
+      </template>
+      <UButton v-else icon="i-lucide-download" label="Export SVG" color="success" variant="soft" :disabled="!hasSvg" @click="$emit('export')" />
       <div class="w-px h-6 bg-zinc-700" />
       <div class="flex gap-1">
         <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors" @click="minimizeWindow">

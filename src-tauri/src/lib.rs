@@ -32,6 +32,7 @@ pub fn run() {
             commands::trace::trace,
             commands::simplify::simplify,
             commands::export::export_svg,
+            commands::export::export_optimized_svg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
