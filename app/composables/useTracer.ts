@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 export interface ImageInfo {
   width: number
   height: number
-  thumbnailBase64: string
+  path: string
 }
 
 export interface SvgData {
@@ -25,12 +25,11 @@ export interface Rect {
 export interface PipelineParams {
   smoothness: number
   lineSnap: number
-  cornerAngle: number
 }
 
 export type TraceMode =
   | { type: 'Monochrome' }
-  | { type: 'MultiColor'; colors: number }
+  | { type: 'MultiColor'; colors: number; cutout: boolean; filterSpeckle: number; colorPrecision: number }
   | { type: 'Outline' }
 
 // Force the browser to paint the loading state before invoke() blocks the JS thread.
@@ -55,6 +54,9 @@ export function useTracer() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  let traceSeq = 0
+  let simplifySeq = 0
+
   async function loadImage(path: string) {
     loading.value = true
     error.value = null
@@ -71,6 +73,7 @@ export function useTracer() {
   }
 
   async function trace(selection: Rect, mode: TraceMode, smoothness: number) {
+    const seq = ++traceSeq
     loading.value = true
     error.value = null
     await waitForPaint()
@@ -80,17 +83,20 @@ export function useTracer() {
         invoke<SvgData>('trace', { selection, mode, smoothness }),
         minDelay,
       ])
+      if (seq !== traceSeq) return
       svgData.value = result
     }
     catch (e) {
+      if (seq !== traceSeq) return
       error.value = String(e)
     }
     finally {
-      loading.value = false
+      if (seq === traceSeq) loading.value = false
     }
   }
 
   async function simplify(params: PipelineParams) {
+    const seq = ++simplifySeq
     loading.value = true
     error.value = null
     await waitForPaint()
@@ -100,13 +106,15 @@ export function useTracer() {
         invoke<SvgData>('simplify', { params }),
         minDelay,
       ])
+      if (seq !== simplifySeq) return
       svgData.value = result
     }
     catch (e) {
+      if (seq !== simplifySeq) return
       error.value = String(e)
     }
     finally {
-      loading.value = false
+      if (seq === simplifySeq) loading.value = false
     }
   }
 

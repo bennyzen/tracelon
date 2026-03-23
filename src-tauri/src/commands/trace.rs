@@ -7,6 +7,13 @@ use crate::pipeline::simplify::simplify_svg_path;
 use crate::pipeline::segment_count::count_segments;
 use crate::pipeline::line_snap::snap_lines;
 
+macro_rules! trace_log {
+    ($($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        eprintln!($($arg)*);
+    };
+}
+
 fn build_vtracer_config(color_mode: vtracer::ColorMode, mode_hint: &TraceMode) -> vtracer::Config {
     match mode_hint {
         TraceMode::Monochrome | TraceMode::Outline => {
@@ -45,7 +52,7 @@ fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, Str
     let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
     let gray = cropped.to_luma8();
     let otsu = otsu_level(&gray);
-    eprintln!("[trace] Otsu threshold: {}", otsu);
+    trace_log!("[trace] Otsu threshold: {}", otsu);
     let binary = threshold(&gray, otsu, ThresholdType::Binary);
 
     let w = binary.width() as usize;
@@ -58,8 +65,8 @@ fn trace_monochrome(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, Str
     };
     let config = build_vtracer_config(vtracer::ColorMode::Binary, &TraceMode::Monochrome);
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
-    let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
-    eprintln!("[trace] monochrome: {} paths", paths.len());
+    let paths: Vec<String> = svg_file.paths.iter().map(|p| p.to_string()).collect();
+    trace_log!("[trace] monochrome: {} paths", paths.len());
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
@@ -70,19 +77,19 @@ fn quantize_image(rgba: &mut image::RgbaImage, n_colors: u8) {
     use color_quant::NeuQuant;
 
     // NeuQuant needs &[u8] of RGBA pixels
-    let pixels: Vec<u8> = rgba.pixels().flat_map(|p| p.0).collect();
+    let pixels = rgba.as_raw();
     // sample_factor: 1 = best quality (sample every pixel), 10 = fast
-    let nq = NeuQuant::new(10, n_colors.max(2) as usize, &pixels);
+    let nq = NeuQuant::new(10, n_colors.max(2) as usize, pixels);
 
     for pixel in rgba.pixels_mut() {
         let idx = nq.index_of(&pixel.0);
         let mapped = nq.lookup(idx).unwrap_or([0, 0, 0, 255]);
         pixel.0 = [mapped[0], mapped[1], mapped[2], pixel.0[3]];
     }
-    eprintln!("[trace] quantized to {} colors", n_colors);
+    trace_log!("[trace] quantized to {} colors", n_colors);
 }
 
-fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<String>, String), String> {
+fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8, cutout: bool, filter_speckle: u32, color_precision: u8) -> Result<(Vec<String>, String), String> {
     let cropped = img.crop_imm(rect.x, rect.y, rect.width, rect.height);
     let mut rgba = cropped.to_rgba8();
     let (w, h) = rgba.dimensions();
@@ -96,16 +103,16 @@ fn trace_multicolor(img: &DynamicImage, rect: &Rect, colors: u8) -> Result<(Vec<
         height: h as usize,
     };
 
-    let mut config = build_vtracer_config(vtracer::ColorMode::Color, &TraceMode::MultiColor { colors });
-    config.hierarchical = vtracer::Hierarchical::Stacked;
-    // After quantization the image has exactly N colors, so use high precision
-    // and low layer_difference to preserve them faithfully
-    config.color_precision = 8;
+    let mode = TraceMode::MultiColor { colors, cutout, filter_speckle, color_precision };
+    let mut config = build_vtracer_config(vtracer::ColorMode::Color, &mode);
+    config.hierarchical = if cutout { vtracer::Hierarchical::Cutout } else { vtracer::Hierarchical::Stacked };
+    config.filter_speckle = filter_speckle as usize;
+    config.color_precision = color_precision as i32;
     config.layer_difference = 4;
 
     let svg_file = vtracer::convert(color_img, config).map_err(|e| format!("Trace failed: {e}"))?;
-    let paths: Vec<String> = svg_file.paths.iter().map(|p| format!("{p}")).collect();
-    eprintln!("[trace] multicolor: {} paths, {} colors requested", paths.len(), colors);
+    let paths: Vec<String> = svg_file.paths.iter().map(|p| p.to_string()).collect();
+    trace_log!("[trace] multicolor: {} paths, {} colors requested", paths.len(), colors);
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
@@ -132,32 +139,37 @@ fn trace_outline(img: &DynamicImage, rect: &Rect) -> Result<(Vec<String>, String
     // Convert filled paths to stroked outlines:
     // Replace fill="..." with fill="none" stroke="black" stroke-width="1"
     let paths: Vec<String> = svg_file.paths.iter().map(|p| {
-        let s = format!("{p}");
-        // Remove existing fill, add stroke
-        let s = if let Some(start) = s.find("fill=\"") {
-            let end = s[start + 6..].find('"').map(|e| start + 6 + e + 1).unwrap_or(s.len());
-            format!("{}fill=\"none\" stroke=\"black\" stroke-width=\"1\"{}", &s[..start], &s[end..])
+        let s = p.to_string();
+        if let Some(fill_start) = s.find(" fill=\"") {
+            let attr_start = fill_start;
+            let val_start = fill_start + 7; // len of ` fill="`
+            let val_end = s[val_start..].find('"').map(|e| val_start + e + 1).unwrap_or(s.len());
+            format!("{} fill=\"none\" stroke=\"black\" stroke-width=\"1\"{}", &s[..attr_start], &s[val_end..])
         } else {
-            // No fill attribute, just add stroke
-            s.replace("/>", " fill=\"none\" stroke=\"black\" stroke-width=\"1\"/>")
-        };
-        s
+            format!("{} fill=\"none\" stroke=\"black\" stroke-width=\"1\"", s.trim_end_matches("/>").trim_end())
+                + "/>"
+        }
     }).collect();
-    eprintln!("[trace] outline: {} paths", paths.len());
+    trace_log!("[trace] outline: {} paths", paths.len());
     Ok((paths, format!("0 0 {w} {h}")))
 }
 
 pub fn trace_inner(state: &Mutex<AppState>, selection: Rect, mode: TraceMode, smoothness: f64) -> Result<SvgData, String> {
-    eprintln!("[trace] Starting: mode={:?} smoothness={}", mode, smoothness);
-    let mut app = state.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let img = app.loaded_image.as_ref().ok_or("No image loaded")?;
+    trace_log!("[trace] Starting: mode={:?} smoothness={}", mode, smoothness);
+    let img = {
+        let app = state.lock().map_err(|e| format!("Lock error: {e}"))?;
+        app.loaded_image.as_ref().ok_or("No image loaded")?.clone()
+    };
+    // Lock is dropped here — trace computation runs without holding the mutex
 
     let (paths, viewbox) = match mode {
-        TraceMode::Monochrome => trace_monochrome(img, &selection)?,
-        TraceMode::MultiColor { colors } => trace_multicolor(img, &selection, colors)?,
-        TraceMode::Outline => trace_outline(img, &selection)?,
+        TraceMode::Monochrome => trace_monochrome(&img, &selection)?,
+        TraceMode::MultiColor { colors, cutout, filter_speckle, color_precision } => trace_multicolor(&img, &selection, colors, cutout, filter_speckle, color_precision)?,
+        TraceMode::Outline => trace_outline(&img, &selection)?,
     };
 
+    // Re-acquire lock only to store results
+    let mut app = state.lock().map_err(|e| format!("Lock error: {e}"))?;
     app.cached_trace_paths = Some(paths.clone());
     app.cached_trace_viewbox = Some(viewbox.clone());
     drop(app);
@@ -168,7 +180,7 @@ pub fn trace_inner(state: &Mutex<AppState>, selection: Rect, mode: TraceMode, sm
 pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelineParams) -> Result<SvgData, String> {
     // Count raw segments before any processing
     let raw_segment_count: usize = paths.iter().map(|p| {
-        extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
+        extract_d_attribute(p).map(|(_, _, d)| count_segments(&d)).unwrap_or(0)
     }).sum();
 
     let flatness = params.line_snap;
@@ -176,7 +188,7 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelinePa
 
     let mut simplified_paths = Vec::new();
     for path_str in paths {
-        if let Some(d) = extract_d_attribute(path_str) {
+        if let Some((d_start, d_end, d)) = extract_d_attribute(path_str) {
             // Stage 1: Simplify the whole path with kurbo (skip at smoothness 0)
             let simplified = if do_simplify {
                 simplify_svg_path(&d, params.smoothness).unwrap_or_else(|_| d.clone())
@@ -187,7 +199,8 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelinePa
             // Stage 2: Snap near-flat cubics/runs to lines (always runs)
             let snapped = snap_lines(&simplified, flatness).unwrap_or(simplified);
 
-            let new_path = path_str.replace(&d, &snapped);
+            // Splice by byte offset instead of string replace
+            let new_path = format!("{}{}{}", &path_str[..d_start], &snapped, &path_str[d_end..]);
             simplified_paths.push(new_path);
         } else {
             simplified_paths.push(path_str.clone());
@@ -198,16 +211,19 @@ pub fn apply_simplification(paths: &[String], viewbox: &str, params: &PipelinePa
     let estimated_size = all_paths.len();
     let path_count = simplified_paths.len();
     let segment_count: usize = simplified_paths.iter().map(|p| {
-        extract_d_attribute(p).map(|d| count_segments(&d)).unwrap_or(0)
+        extract_d_attribute(p).map(|(_, _, d)| count_segments(&d)).unwrap_or(0)
     }).sum();
 
     Ok(SvgData { paths: all_paths, path_count, segment_count, raw_segment_count, viewbox: viewbox.to_string(), estimated_size })
 }
 
-fn extract_d_attribute(svg_path_element: &str) -> Option<String> {
-    let d_start = svg_path_element.find("d=\"")? + 3;
+fn extract_d_attribute(svg_path_element: &str) -> Option<(usize, usize, String)> {
+    // Search for ' d="' to avoid matching 'id="', 'stroke-width="' etc.
+    let marker = " d=\"";
+    let d_attr_start = svg_path_element.find(marker)?;
+    let d_start = d_attr_start + marker.len();
     let d_end = svg_path_element[d_start..].find('"')? + d_start;
-    Some(svg_path_element[d_start..d_end].to_string())
+    Some((d_start, d_end, svg_path_element[d_start..d_end].to_string()))
 }
 
 #[tauri::command]
@@ -276,7 +292,7 @@ mod tests {
     #[test]
     fn test_extract_d_attribute() {
         let svg = r#"<path d="M0,0 L100,0" fill="black"/>"#;
-        assert_eq!(extract_d_attribute(svg), Some("M0,0 L100,0".to_string()));
+        assert_eq!(extract_d_attribute(svg), Some((9, 20, "M0,0 L100,0".to_string())));
     }
 
     #[test]

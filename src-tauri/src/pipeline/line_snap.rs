@@ -151,9 +151,13 @@ fn is_flat(p0: Point, p1: Point, p2: Point, p3: Point, tolerance: f64) -> bool {
 
 fn point_to_line_distance(p: Point, a: Point, b: Point) -> f64 {
     let ab = b - a;
+    let len_sq = ab.x * ab.x + ab.y * ab.y;
+    if len_sq < 1e-12 {
+        return p.distance(a);
+    }
     let ap = p - a;
     let cross = ab.x * ap.y - ab.y * ap.x;
-    cross.abs() / (ab.x * ab.x + ab.y * ab.y).sqrt()
+    cross.abs() / len_sq.sqrt()
 }
 
 fn last_point(path: &BezPath) -> Option<Point> {

@@ -55,8 +55,14 @@ export function useSvgo() {
     return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewbox}">\n${paths}\n</svg>`
   }
 
-  function doOptimize(paths: string, viewbox: string) {
+  async function doOptimize(paths: string, viewbox: string) {
     optimizing.value = true
+    // Let the loading spinner paint before the sync SVGO call blocks
+    await new Promise<void>(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve())
+      })
+    })
     try {
       const fullSvg = buildSvgDocument(paths, viewbox)
       originalSize.value = new Blob([fullSvg]).size

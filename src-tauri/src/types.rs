@@ -13,7 +13,13 @@ pub struct Rect {
 #[serde(tag = "type")]
 pub enum TraceMode {
     Monochrome,
-    MultiColor { colors: u8 },
+    #[serde(rename_all = "camelCase")]
+    MultiColor {
+        colors: u8,
+        cutout: bool,
+        filter_speckle: u32,
+        color_precision: u8,
+    },
     Outline,
 }
 
@@ -22,16 +28,14 @@ pub enum TraceMode {
 pub struct ImageInfo {
     pub width: u32,
     pub height: u32,
-    pub thumbnail_base64: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct PipelineParams {
     pub smoothness: f64,
     pub line_snap: f64,
-    pub corner_angle: f64,
 }
 
 impl PipelineParams {
@@ -39,7 +43,6 @@ impl PipelineParams {
         Self {
             smoothness: s,
             line_snap: 0.5 + s * 2.0,       // 0.5-2.5 px
-            corner_angle: 120.0 + s * 30.0,  // 120-150°
         }
     }
 }

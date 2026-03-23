@@ -27,11 +27,13 @@ const mode = defineModel<TraceMode>('mode', {
 })
 const smoothness = defineModel<number>('smoothness', { default: 50 })
 const colorCount = ref(6)
+const colorCutout = ref(false)
+const colorSpeckle = ref(8)
+const colorPrecision = ref(8)
 const showTune = ref(false)
 
 // Individual pipeline params — derived from smoothness by default
 const lineSnap = ref(1.5)
-const cornerAngle = ref(135)
 
 // When smoothness changes, update derived params and emit
 function deriveParams(s: number): PipelineParams {
@@ -39,7 +41,6 @@ function deriveParams(s: number): PipelineParams {
   return {
     smoothness: normalized,
     lineSnap: 0.5 + normalized * 2.0,
-    cornerAngle: 120.0 + normalized * 30.0,
   }
 }
 
@@ -47,7 +48,6 @@ function currentParams(): PipelineParams {
   return {
     smoothness: smoothness.value / 100,
     lineSnap: lineSnap.value,
-    cornerAngle: cornerAngle.value,
   }
 }
 
@@ -56,23 +56,33 @@ const modeItems = [
   { label: 'Color', value: 'MultiColor' },
   { label: 'Outline', value: 'Outline' },
 ]
-const selectedModeValue = ref('Monochrome')
 
-watch(selectedModeValue, (val) => {
-  if (val === 'MultiColor') {
-    mode.value = { type: 'MultiColor', colors: colorCount.value }
+function buildMultiColorMode(): TraceMode {
+  return {
+    type: 'MultiColor',
+    colors: colorCount.value,
+    cutout: colorCutout.value,
+    filterSpeckle: colorSpeckle.value,
+    colorPrecision: colorPrecision.value,
   }
-  else if (val === 'Outline') {
-    mode.value = { type: 'Outline' }
-  }
-  else {
-    mode.value = { type: 'Monochrome' }
-  }
+}
+
+const selectedModeValue = computed({
+  get: () => mode.value.type,
+  set: (val: string) => {
+    if (val === 'MultiColor') {
+      mode.value = buildMultiColorMode()
+    } else if (val === 'Outline') {
+      mode.value = { type: 'Outline' }
+    } else {
+      mode.value = { type: 'Monochrome' }
+    }
+  },
 })
 
-watch(colorCount, (val) => {
+watch([colorCount, colorCutout, colorSpeckle, colorPrecision], () => {
   if (selectedModeValue.value === 'MultiColor') {
-    mode.value = { type: 'MultiColor', colors: val }
+    mode.value = buildMultiColorMode()
   }
 })
 
@@ -88,12 +98,11 @@ function emitPipelineChange() {
 watch(smoothness, (val) => {
   const derived = deriveParams(val)
   lineSnap.value = Math.round(derived.lineSnap * 10) / 10
-  cornerAngle.value = Math.round(derived.cornerAngle)
   emitPipelineChange()
 })
 
 // When individual params change, emit
-watch([lineSnap, cornerAngle], () => {
+watch(lineSnap, () => {
   emitPipelineChange()
 })
 </script>
@@ -109,13 +118,8 @@ watch([lineSnap, cornerAngle], () => {
       <UTabs v-model="selectedModeValue" :items="modeItems" variant="pill" size="xs" :content="false" />
       <template v-if="selectedModeValue === 'MultiColor'">
         <span class="text-xs text-zinc-500">Colors:</span>
-        <input
-          v-model.number="colorCount"
-          type="number"
-          min="2"
-          max="16"
-          class="w-14 px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded text-white"
-        />
+        <UInputNumber v-model="colorCount" :min="2" :max="32" :step="1" size="xs" class="w-24" />
+        <UCheckbox v-model="colorCutout" label="Cutout" />
       </template>
       <div class="w-px h-6 bg-zinc-700" />
       <span class="text-xs text-zinc-500">Smoothness:</span>
@@ -131,7 +135,7 @@ watch([lineSnap, cornerAngle], () => {
         @click="showTune = !showTune"
       />
       <div class="flex-1" />
-      <UFieldGroup>
+      <div class="flex gap-1">
         <UButton
           icon="i-lucide-route"
           label="Trace"
@@ -151,7 +155,7 @@ watch([lineSnap, cornerAngle], () => {
           :disabled="!hasSvg"
           @click="$emit('export')"
         />
-      </UFieldGroup>
+      </div>
       <UButton
         icon="i-lucide-save"
         label="Export"
@@ -187,11 +191,19 @@ watch([lineSnap, cornerAngle], () => {
         <USlider v-model="lineSnap" :min="0" :max="5" :step="0.1" class="w-28" />
         <span class="text-zinc-400 w-10">{{ lineSnap }}px</span>
       </div>
-      <div class="flex items-center gap-1.5">
-        <span class="text-zinc-500">Corner angle:</span>
-        <USlider v-model="cornerAngle" :min="90" :max="170" :step="1" class="w-28" />
-        <span class="text-zinc-400 w-8">{{ cornerAngle }}&deg;</span>
-      </div>
+      <template v-if="selectedModeValue === 'MultiColor'">
+        <div class="w-px h-4 bg-zinc-700" />
+        <div class="flex items-center gap-1.5">
+          <span class="text-zinc-500">Speckle:</span>
+          <USlider v-model="colorSpeckle" :min="1" :max="50" :step="1" class="w-28" />
+          <span class="text-zinc-400 w-8">{{ colorSpeckle }}px</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-zinc-500">Precision:</span>
+          <USlider v-model="colorPrecision" :min="1" :max="8" :step="1" class="w-28" />
+          <span class="text-zinc-400 w-4">{{ colorPrecision }}</span>
+        </div>
+      </template>
     </div>
   </div>
 </template>

@@ -4,7 +4,6 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui'],
   css: ['~/assets/css/main.css'],
   ssr: false,
-  devServer: { host: '0.0.0.0' },
   vite: {
     clearScreen: false,
     envPrefix: ['VITE_', 'TAURI_'],

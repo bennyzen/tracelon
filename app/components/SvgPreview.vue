@@ -1,24 +1,20 @@
 <script setup lang="ts">
-import type { SvgData } from '~/composables/useTracer'
+import type { SvgData, Rect } from '~/composables/useTracer'
 
 const props = defineProps<{
   svgData: SvgData | null
-  thumbnailBase64: string | null
+  previewUrl: string | null
+  imageWidth: number
+  imageHeight: number
+  selection: Rect | null
   loading: boolean
 }>()
 
-const showOverlay = ref(true)
+const showOverlay = ref(false)
+const overlayCanvasRef = ref<HTMLCanvasElement | null>(null)
+const overlayImg = ref<HTMLImageElement | null>(null)
 
-// Zoom & pan state
-const zoom = ref(1)
-const panX = ref(0)
-const panY = ref(0)
-const isPanning = ref(false)
-const lastMouse = ref({ x: 0, y: 0 })
-const containerRef = ref<HTMLElement | null>(null)
-
-const MIN_ZOOM = 0.1
-const MAX_ZOOM = 20
+const { zoom, panX, panY, isPanning, containerRef, zoomPercent, isViewModified, onWheel, onMouseDown, onMouseMove, onMouseUp, resetView } = useZoomPan()
 
 // Parse viewBox dimensions once
 const svgDims = computed(() => {
@@ -36,67 +32,48 @@ const svgHtml = computed(() => {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${props.svgData.viewbox}" width="${zw}" height="${zh}" style="display:block;">${props.svgData.paths}</svg>`
 })
 
+// Load the source image for overlay
+watch(() => props.previewUrl, (url) => {
+  if (!url) { overlayImg.value = null; return }
+  const img = new Image()
+  img.onload = () => { overlayImg.value = img; drawOverlay() }
+  img.src = url
+})
+
+// Redraw overlay when zoom, selection, or show state changes
+watch([zoom, showOverlay, () => props.svgData?.viewbox], () => {
+  nextTick(drawOverlay)
+})
+
+function drawOverlay() {
+  const canvas = overlayCanvasRef.value
+  const img = overlayImg.value
+  if (!canvas || !img) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const { w, h } = svgDims.value
+  const cw = w * zoom.value
+  const ch = h * zoom.value
+  canvas.width = cw
+  canvas.height = ch
+
+  // Source region: selection or full image
+  const sx = props.selection?.x ?? 0
+  const sy = props.selection?.y ?? 0
+  const sw = props.selection?.width ?? props.imageWidth
+  const sh = props.selection?.height ?? props.imageHeight
+
+  ctx.clearRect(0, 0, cw, ch)
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch)
+}
+
 // Reset zoom/pan only when a new image is traced (viewbox changes), not on re-simplification
 watch(() => props.svgData?.viewbox, (newVb, oldVb) => {
   if (newVb !== oldVb) {
-    zoom.value = 1
-    panX.value = 0
-    panY.value = 0
+    resetView()
   }
 })
-
-function onWheel(e: WheelEvent) {
-  e.preventDefault()
-  const container = containerRef.value
-  if (!container) return
-
-  const rect = container.getBoundingClientRect()
-  // Mouse position relative to container center
-  const mx = e.clientX - rect.left - rect.width / 2
-  const my = e.clientY - rect.top - rect.height / 2
-
-  const oldZoom = zoom.value
-  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-  const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldZoom * factor))
-
-  // Zoom toward mouse position
-  const scale = newZoom / oldZoom
-  panX.value = mx - scale * (mx - panX.value)
-  panY.value = my - scale * (my - panY.value)
-  zoom.value = newZoom
-}
-
-function onMouseDown(e: MouseEvent) {
-  if (e.button === 0 || e.button === 1) {
-    isPanning.value = true
-    lastMouse.value = { x: e.clientX, y: e.clientY }
-    e.preventDefault()
-  }
-}
-
-function onMouseMove(e: MouseEvent) {
-  if (!isPanning.value) return
-  panX.value += e.clientX - lastMouse.value.x
-  panY.value += e.clientY - lastMouse.value.y
-  lastMouse.value = { x: e.clientX, y: e.clientY }
-}
-
-function onMouseUp() {
-  isPanning.value = false
-}
-
-function resetView() {
-  zoom.value = 1
-  panX.value = 0
-  panY.value = 0
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
-}
-
-const zoomPercent = computed(() => Math.round(zoom.value * 100))
 </script>
 
 <template>
@@ -142,15 +119,15 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100))
           }"
         >
           <div class="relative">
-            <img
-              v-if="showOverlay && thumbnailBase64"
-              :src="`data:image/jpeg;base64,${thumbnailBase64}`"
-              class="absolute inset-0 w-full h-full object-contain opacity-20 pointer-events-none"
-            />
             <div
-              class="relative rounded"
-              style="background: repeating-conic-gradient(#e5e5e5 0% 25%, #fff 0% 50%) 0 0 / 16px 16px;"
+              class="rounded bg-checkerboard"
               v-html="svgHtml"
+            />
+            <canvas
+              v-if="showOverlay && previewUrl"
+              ref="overlayCanvasRef"
+              class="absolute top-0 left-0 opacity-30 pointer-events-none"
+              :style="{ width: `${svgDims.w * zoom}px`, height: `${svgDims.h * zoom}px` }"
             />
           </div>
         </div>
@@ -159,24 +136,19 @@ const zoomPercent = computed(() => Math.round(zoom.value * 100))
         Trace an image to see the preview
       </div>
     </div>
-    <div class="px-3 py-1.5 bg-zinc-900 border-t border-zinc-800 text-xs text-zinc-600 flex gap-4 items-center">
-      <label class="flex items-center gap-1.5 cursor-pointer">
-        <input v-model="showOverlay" type="checkbox" class="accent-violet-500" />
-        Show overlay
-      </label>
-      <label class="flex items-center gap-1.5 cursor-pointer opacity-50" title="Coming soon">
-        <input type="checkbox" class="accent-violet-500" disabled />
-        Control points
-      </label>
+    <div class="px-3 h-8 bg-zinc-900 border-t border-zinc-800 text-xs text-zinc-600 flex gap-4 items-center">
+      <UCheckbox v-model="showOverlay" label="Show overlay" />
+      <UCheckbox disabled label="Control points" class="opacity-50" title="Coming soon" />
       <div class="flex-1" />
       <span v-if="svgData" class="text-zinc-500">{{ zoomPercent }}%</span>
-      <button
-        v-if="svgData && (zoom !== 1 || panX !== 0 || panY !== 0)"
-        class="text-zinc-500 hover:text-white transition-colors"
+      <UButton
+        v-if="svgData && isViewModified"
+        variant="link"
+        color="neutral"
+        size="xs"
+        label="Reset view"
         @click="resetView"
-      >
-        Reset view
-      </button>
+      />
     </div>
   </div>
 </template>

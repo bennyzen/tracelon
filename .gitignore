@@ -10,3 +10,8 @@ node_modules/
 
 # Rust / Tauri
 src-tauri/target/
+
+# Arch packages
+pkg/
+*.pkg.tar.zst
+*.pkg.tar.xz

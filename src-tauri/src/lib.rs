@@ -6,20 +6,11 @@ mod pipeline;
 use std::sync::{Arc, Mutex};
 use image::DynamicImage;
 
+#[derive(Default)]
 pub struct AppState {
     pub loaded_image: Option<DynamicImage>,
     pub cached_trace_paths: Option<Vec<String>>,
     pub cached_trace_viewbox: Option<String>,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            loaded_image: None,
-            cached_trace_paths: None,
-            cached_trace_viewbox: None,
-        }
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

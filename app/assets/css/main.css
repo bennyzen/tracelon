@@ -1,2 +1,6 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+.bg-checkerboard {
+  background: repeating-conic-gradient(#e5e5e5 0% 25%, #fff 0% 50%) 0 0 / 16px 16px;
+}

@@ -20,7 +20,13 @@
         "decorations": false
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": "default-src 'self' asset: https://asset.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data:; connect-src 'self' https://api.iconify.design; font-src 'self' data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**", "$DOCUMENTS/**", "$DOWNLOADS/**", "$DESKTOP/**"]
+      }
+    }
   },
   "bundle": {
     "active": true,
