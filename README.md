@@ -51,9 +51,41 @@ Load an image, select an area, trace it to SVG, and interactively tune curve smo
 - **Speckle filter**: Remove small noise patches (color mode)
 - **Color precision**: Control color grouping sensitivity (color mode)
 
-## Downloads
+## Installation
 
-Pre-built binaries for **macOS** (ARM64 & Intel), **Linux** (x64), and **Windows** (x64) are available on the [Releases page](https://github.com/bennyzen/tracelon/releases).
+Pre-built binaries are available on the [Releases page](https://github.com/bennyzen/tracelon/releases).
+
+### macOS
+
+Download the `.dmg` for your architecture (ARM64 for M1+, x64 for Intel), open it, and drag Tracelon to Applications.
+
+### Windows
+
+Download and run the `.msi` installer.
+
+### Linux (Debian/Ubuntu)
+
+```bash
+# Download the .deb from the releases page, then:
+sudo dpkg -i Tracelon_*.deb
+```
+
+### Arch Linux
+
+A pacman package is included in each release:
+
+```bash
+# Download the .pkg.tar.zst from the releases page, then:
+sudo pacman -U tracelon-*.pkg.tar.zst
+```
+
+Or build from source using the included PKGBUILD:
+
+```bash
+git clone https://github.com/bennyzen/tracelon.git
+cd tracelon
+makepkg -si
+```
 
 ## Tech Stack
 

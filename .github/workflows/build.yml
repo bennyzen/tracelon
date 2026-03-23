@@ -82,3 +82,38 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  build-pacman:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    name: Build (Arch Linux)
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install base dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git rust cargo nodejs pnpm pkg-config openssl \
+            webkit2gtk-4.1 gtk3 glib2 libsoup3 librsvg libappindicator-gtk3 patchelf
+
+      - uses: actions/checkout@v4
+
+      - name: Build pacman package
+        run: |
+          # makepkg cannot run as root, create a build user
+          useradd -m builder
+          chown -R builder:builder .
+          # Allow builder to install deps
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          su builder -c 'makepkg -s --noconfirm'
+
+      - name: Upload pacman package to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pacman -S --noconfirm github-cli
+          pkg_file=$(ls *.pkg.tar.zst)
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release upload "$tag" "$pkg_file" --clobber
