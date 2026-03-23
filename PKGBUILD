@@ -25,7 +25,7 @@ source=()
 build() {
   cd "$startdir"
   pnpm install --frozen-lockfile
-  pnpm tauri build --bundles none
+  pnpm tauri build --bundles deb
 }
 
 package() {
