@@ -110,6 +110,7 @@ watch(lineSnap, () => {
 <template>
   <div>
     <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900" data-tauri-drag-region>
+      <img src="/logo.png" alt="Tracelon" class="w-5 h-5 pointer-events-none" />
       <span class="text-sm font-semibold text-zinc-400 select-none pointer-events-none">Tracelon</span>
       <div class="w-px h-6 bg-zinc-700" />
       <UButton icon="i-lucide-folder-open" label="Open" variant="outline" color="primary" size="sm" @click="$emit('open')" />
