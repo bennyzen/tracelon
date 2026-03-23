@@ -17,6 +17,10 @@
 
 ---
 
+<p align="center">
+  <img src="screenshot1.webp" alt="Tracelon screenshot" width="800" />
+</p>
+
 Load an image, select an area, trace it to SVG, and interactively tune curve smoothness with live preview. The key feature is post-trace curve simplification that eliminates the jaggedness typical of bitmap-to-vector conversion.
 
 ## Features
